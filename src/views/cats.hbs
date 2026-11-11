@@ -1,0 +1,126 @@
+{{#expect cats, show, colonyFlags, totals, colonies, colonyId, notifications, sidebar, sectionLabel}}
+{{#var back = '/admin/cats' + (show ? '?show=' + show : '')}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Cats</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/modern.css">
+</head>
+<body><a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="shell">
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    {{{ sidebar }}}
+    <label for="nav-toggle" class="nav-scrim" aria-hidden="true"></label>
+    <div class="main-col">
+      <header class="topbar">
+        <button type="button" class="menu-btn" aria-label="Open menu" aria-controls="workspace-navigation" aria-expanded="false">☰</button><div class="topbar-context"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ sectionLabel }}</strong></div><span class="topbar-date" data-today></span>
+        {{{ notifications }}}
+      </header>
+      <main class="content cats-page" id="main-content">
+  <div class="page-heading"><div><span class="eyebrow">FAMILIAR FACES. LITTLE STORIES.</span><h1>Meet the colony<span class="heading-dot">.</span></h1><p>Every cat has a story. Keep theirs all together.</p></div><a class="button primary" href="#add-cat">＋ Add a cat</a></div>
+
+  <div class="stats">
+    <div><strong>{{ totals.cats ?? 0 }}</strong>cats</div>
+    <div><strong>{{ totals.fixed ?? 0 }}</strong>fixed</div>
+    <div><strong>{{ totals.need_tnr ?? 0 }}</strong>need TNR</div>
+    <div><strong>{{ totals.fixed_by_us ?? 0 }}</strong>fixed by us ({{ totals.fixed_this_year ?? 0 }} this year)</div>
+    <div><strong>{{ totals.adopted ?? 0 }}</strong>adopted</div>
+  </div>
+
+  <details id="add-cat" {{ colonyId ? 'open' : '' }}>
+    <summary>Add a cat</summary>
+    <form class="inline" method="post" action="/admin/cats">
+      <label>Colony
+        <select name="colony_id" required>
+          <option value="">Pick a colony…</option>
+          {{#each colonies as colony}}
+            <option value="{{ colony.id }}" {{ String(colony.id) === colonyId ? 'selected' : '' }}>{{ colony.name }}</option>
+          {{/each}}
+        </select>
+      </label>
+      <label>Name <input name="name"></label>
+      <label>Coat <input name="coat" placeholder="e.g. gray tabby" required></label>
+      <label>Markings <input name="markings"></label>
+      <label><input type="checkbox" name="fixed" value="1"> Already fixed</label>
+      <button>Add</button>
+    </form>
+  </details>
+
+  {{#if colonyFlags.length > 0}}
+    <h2>Urgent for a whole colony</h2>
+    <ul>
+      {{#each colonyFlags as flag}}
+        <li class="urgent">
+          ⚠️ <strong>{{ flag.kind }}</strong> at
+          <a href="/admin/colonies/{{ flag.colony_id }}">{{ flag.colony_name }}</a>
+          <p>{{ flag.note }}</p>
+          <small><time datetime="{{ flag.created_at }}">{{ flag.created_at }} UTC</time></small>
+          <form class="inline" method="post" action="/admin/flags/{{ flag.id }}">
+            <input type="hidden" name="back" value="{{ back }}">
+            <input name="note" aria-label="What was done?" placeholder="What was done? (optional)">
+            <button>Handled</button>
+          </form>
+        </li>
+      {{/each}}
+    </ul>
+  {{/if}}
+
+  <div class="directory-controls"><label class="directory-search"><span aria-hidden="true">⌕</span><input type="search" data-cat-search aria-label="Search cats" placeholder="Find a name, coat, or colony…"></label><span class="directory-total">{{ cats.length }} {{ cats.length === 1 ? 'cat' : 'cats' }} in this view</span></div>
+  <nav class="filters" aria-label="Show cats"><a href="/admin/cats" {{ !show ? 'aria-current=page' : '' }}>All cats</a><a href="/admin/cats?show=urgent" {{ show === 'urgent' ? 'aria-current=page' : '' }}>Needs care</a><a href="/admin/cats?show=same" {{ show === 'same' ? 'aria-current=page' : '' }}>Possible matches</a><a href="/admin/cats?show=new" {{ show === 'new' ? 'aria-current=page' : '' }}>New faces</a><a href="/admin/cats?show=tnr" {{ show === 'tnr' ? 'aria-current=page' : '' }}>Awaiting TNR</a></nav>
+  <div class="empty-state panel search-empty" data-search-empty hidden><span class="empty-icon">⌕</span><h3>No familiar faces found.</h3><p>Try another name, coat, or colony.</p></div>
+  {{#if cats.length === 0}}
+    <div class="empty-state panel directory-empty"><span class="empty-icon">🐾</span><h2>{{ show ? 'All clear in this corner.' : 'Every little life has a place here.' }}</h2><p>{{ show ? 'There are no cats in this view right now. Choose another filter to keep exploring.' : 'Add a cat you know, or let volunteer reports introduce the next familiar face.' }}</p><a class="button button-secondary" href="{{ colonies.length ? '#add-cat' : '/admin/colonies#add' }}">{{ colonies.length ? '＋ Add your first cat' : '⌖ Start with a colony' }}</a></div>
+  {{#else}}
+    <ul>
+      {{#each cats as cat}}
+        <li data-cat-card id="cat-{{ cat.id }}" class="directory-cat cat {{ cat.open_flags ? 'urgent' : cat.status === 'pending' ? 'new' : '' }}">
+          {{#var photoUrl = cat.cat_photo_id ? '/cat-photos/' + cat.cat_photo_id : cat.photo_message_id ? '/photos/' + cat.photo_message_id : null}}
+          {{#if photoUrl}}<a class="cat-photo-link" href="/admin/cats/{{ cat.id }}"><img src="{{ photoUrl }}" alt="{{ cat.coat }}" loading="lazy"></a>{{#else}}<a class="cat-photo-link cat-blank" href="/admin/cats/{{ cat.id }}" aria-label="View {{ cat.name || cat.coat }}"><span>🐈</span><small>A familiar face</small></a>{{/if}}
+          <div>
+            <p>
+              <a href="/admin/cats/{{ cat.id }}"><strong>{{ cat.name || cat.coat }}</strong></a> at
+              <a href="/admin/colonies/{{ cat.colony_id }}">{{ cat.colony_name }}</a>
+              {{#if cat.status !== 'active'}}· {{ cat.status === 'pending' ? 'New, not confirmed yet' : cat.status }}{{/if}}
+            </p>
+            <p>{{ cat.coat }}{{ cat.markings ? ' · ' + cat.markings : '' }} · {{ cat.fixed ? 'Fixed' : 'Needs TNR' }}</p>
+            {{#if cat.open_flags}}<p>⚠️ {{ cat.open_flags }}</p>{{/if}}
+            <small>
+              Seen {{ cat.sightings === 1 ? 'once' : cat.sightings + ' times' }}
+              {{#if cat.last_seen_at}}· last <time datetime="{{ cat.last_seen_at }}">{{ cat.last_seen_at }} UTC</time>{{/if}}
+            </small>
+            {{#if cat.same_id}}
+              <div class="same">
+                <p class="cat">
+                  Same cat as
+                  <a href="/admin/cats/{{ cat.maybe_same_as }}"><strong>{{ cat.same_name || cat.same_coat || 'Cat #' + cat.same_id }}</strong></a>?
+                  {{#if cat.same_photo_message_id}}<img src="/photos/{{ cat.same_photo_message_id }}" alt="{{ cat.same_coat }}" loading="lazy">{{/if}}
+                </p>
+                <form class="inline" method="post" action="/admin/cats/{{ cat.id }}">
+                  <input type="hidden" name="back" value="{{ back }}">
+                  <input type="hidden" name="into" value="{{ cat.maybe_same_as }}">
+                  <button name="action" value="merge" data-confirm="Merge {{ cat.name || cat.coat }} into {{ cat.same_name || cat.same_coat }}? This can't be undone.">Same cat, merge</button>
+                  <button name="action" value="not_same">Different cats</button>
+                </form>
+              </div>
+            {{/if}}
+            {{#if !cat.fixed && (cat.status === 'active' || cat.status === 'pending')}}
+              <form class="inline" method="post" action="/admin/cats/{{ cat.id }}">
+                <input type="hidden" name="back" value="{{ back }}">
+                <button name="action" value="fixed" data-confirm="Mark {{ cat.name || cat.coat }} as fixed (TNR done)?">Fixed (TNR done)</button>
+              </form>
+            {{/if}}
+          </div>
+        </li>
+      {{/each}}
+    </ul>
+  {{/if}}
+      </main>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

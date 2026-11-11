@@ -1,0 +1,234 @@
+{{#expect rooms, approvals, newCats, flags, notifications, sidebar, sectionLabel, pendingCount, totals, colonies, aiReady}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Today · Cat Keeper</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/modern.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#live">Skip to content</a>
+    <div class="shell">
+      <input type="checkbox" id="nav-toggle" class="nav-toggle">{{{ sidebar }}}
+      <label for="nav-toggle" class="nav-scrim" aria-hidden="true">
+      </label>
+      <div class="main-col">
+        <header class="topbar">
+          <button type="button" class="menu-btn" aria-label="Open menu" aria-controls="workspace-navigation" aria-expanded="false">☰</button>
+          <div class="topbar-context">
+            <span>Workspace</span><span class="crumb-separator">/</span><strong>Today</strong>
+          </div>
+          <span class="topbar-date" data-today></span>{{{ notifications }}}
+        </header>
+        <main class="content dashboard" id="live">
+          <div class="page-heading">
+            <div>
+              <span class="eyebrow">YOUR DAILY LITTLE OVERVIEW</span><h1>A good day to care<span class="heading-dot">.</span></h1><p>A clear picture of your colonies. A little more peace of mind.</p>
+            </div>
+            <a class="button primary" href="#new-chat"><span>＋</span> New volunteer chat</a>
+          </div>
+          <div class="dashboard-hero">
+            <div>
+              <span class="hero-tag"><span class="status-dot"></span> EVERY CAT COUNTS</span><h2>Small moments.<br><span>Big differences.</span></h2><p>Full bowls, familiar faces, and a team that’s in the loop. Let’s take care of the next little thing.</p><a class="hero-link" href="/admin/colonies">See your colonies <span>↗</span></a>
+            </div>
+            <div class="hero-cat" aria-hidden="true">
+              <svg viewBox="0 0 360 230" fill="none"><circle cx="266" cy="69" r="37" fill="#ffc93c"/><path d="M33 198C73 150 300 148 337 198C302 231 70 235 33 198Z" fill="#c6d0ff"/><path d="M83 175C52 182 41 155 54 136C45 165 72 164 90 154" stroke="#4a5fd9" stroke-width="19" stroke-linecap="round"/><path d="M91 180C80 114 116 104 167 112C218 89 263 131 273 176" fill="#fff"/><path d="M168 141L153 68L192 91C213 83 232 87 245 98L275 80L269 143C259 168 180 175 168 141Z" fill="#fff"/><path d="M166 86L174 111L189 99M255 106L266 94L263 120" fill="#ffb2a4"/><path d="M192 129Q199 120 205 129M235 129Q242 120 248 129" stroke="#202a4a" stroke-width="4" stroke-linecap="round"/><path d="M214 140L222 140L218 146Z" fill="#ff7a66"/><path d="M218 146Q210 155 206 150M218 146Q225 155 230 150" stroke="#202a4a" stroke-width="2.5" stroke-linecap="round"/><path d="M180 139L155 134M180 147L154 149M258 140L283 135M257 149L282 153" stroke="#7a93ff" stroke-width="2.5" stroke-linecap="round"/><path d="M129 164Q137 153 145 166L152 180H120" fill="#eaf0ff"/><path d="M263 178H286" stroke="#fff" stroke-width="14" stroke-linecap="round"/><path d="M81 61L85 49M74 56L93 55M304 119L308 107M299 113L316 113" stroke="#7a93ff" stroke-width="3" stroke-linecap="round"/><circle cx="107" cy="92" r="5" fill="#ff7a66"/></svg><span class="hero-sticker">A little love goes a long way ♡</span>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <a class="metric-card" href="/admin/cats"><span class="metric-icon lavender">🐾</span><span class="metric-label">Cats in our care</span><strong>{{ totals.cats ?? 0 }}</strong><small>Confirmed, familiar faces <span>↗</span></small></a><a class="metric-card" href="/admin/colonies"><span class="metric-icon peach">⌖</span><span class="metric-label">Active colonies</span><strong>{{ colonies.length }}</strong><small>Little corners of the world <span>↗</span></small></a><a class="metric-card" href="/admin/cats?show=tnr"><span class="metric-icon mint">♡</span><span class="metric-label">Fixed & flourishing</span><strong>{{ totals.fixed ?? 0 }}</strong><small>{{ totals.need_tnr ?? 0 }} still need TNR <span>↗</span></small></a><a class="metric-card" href="#review-queue"><span class="metric-icon butter">☀</span><span class="metric-label">Needs a little help</span><strong>{{ pendingCount }}</strong><small>Decisions for your team <span>↗</span></small></a>
+          </div>
+          {{#if colonies.length === 0 && rooms.length === 0}}
+          <section class="onboarding-panel">
+            <div>
+              <span class="eyebrow">LET’S MAKE THIS PLACE YOURS</span><h2>Your first small steps.</h2><p>A colony and a volunteer chat are all you need to get started.</p>
+            </div>
+            <div class="setup-steps">
+              <a href="/admin/colonies#add"><span class="step-number">01</span>
+              <div>
+                <strong>Add your first colony</strong><small>Give your cats a place on the map.</small>
+              </div>
+              <span>↗</span></a><a href="#new-chat"><span class="step-number">02</span>
+              <div>
+                <strong>Invite a helping hand</strong><small>Create a chat and share its link.</small>
+              </div>
+              <span>↗</span></a>
+            </div>
+          </section>
+          {{/if}}
+          <div class="dashboard-columns">
+            <section class="panel review-panel" id="review-queue">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">THE NEXT SMALL THINGS</span><h2>A little attention needed <span class="count-pill">{{ pendingCount }}</span></h2>
+                </div>
+                <span class="panel-symbol">♡</span>
+              </div>
+              {{#if pendingCount === 0}}
+              <div class="empty-state calm-empty">
+                <span class="empty-icon">✓</span><h3>A lovely moment of calm.</h3><p>No urgent cases or decisions waiting.<br>We’ll keep the next things right here.</p><a class="text-link" href="/admin/cats">Meet your cats <span>→</span></a>
+              </div>
+              {{/if}}
+              {{#if flags.length > 0}}
+              <div class="queue-label">
+                <span class="status-dot coral"></span> Urgent care · {{ flags.length }}
+              </div>
+              <ul class="review-list">
+                {{#each flags as flag}}
+                <li id="flag-{{ flag.id }}" class="urgent review-item">
+                  <div class="item-title">
+                    <span class="state-label danger">{{ flag.kind.replaceAll('_', ' ') }}</span><a href="/admin/colonies/{{ flag.colony_id }}">{{ flag.colony_name }} ↗</a>
+                  </div>
+                  {{#if flag.cat_id}}<h3><a href="/admin/cats/{{ flag.cat_id }}">{{ flag.cat_name || flag.cat_coat }}</a></h3>{{/if}}<p>{{ flag.note }}</p><small><time datetime="{{ flag.created_at }}">{{ flag.created_at }} UTC</time></small>
+                  <form class="inline" method="post" action="/admin/flags/{{ flag.id }}">
+                    <input type="hidden" name="back" value="/admin"><input name="note" aria-label="What was done?" placeholder="A quick note on what you did…"><button>Mark handled</button>
+                  </form>
+                </li>
+                {{/each}}
+              </ul>
+              {{/if}}
+              {{#if newCats.length > 0}}
+              <div class="queue-label">
+                <span class="status-dot sun"></span> New faces · {{ newCats.length }}
+              </div>
+              <ul class="review-list">
+                {{#each newCats as cat}}
+                <li id="cat-{{ cat.id }}" class="review-item">
+                  <div class="review-cat-heading">
+                    {{#if cat.photo_message_id}}<img src="/photos/{{ cat.photo_message_id }}" alt="{{ cat.coat }}">{{#else}}<span class="cat-placeholder">🐈</span>{{/if}}
+                    <div>
+                      <a class="item-name" href="/admin/cats/{{ cat.id }}">{{ cat.name || cat.coat }}</a><p>{{ cat.colony_name }} · {{ cat.fixed ? 'Fixed' : 'TNR not confirmed' }}</p>
+                    </div>
+                    <span class="state-label pending">Review</span>
+                  </div>
+                  <p>{{ cat.markings }}</p>{{#if cat.maybe_same_as}}
+                  <div class="same">
+                    A familiar face? This might be <a href="/admin/cats/{{ cat.maybe_same_as }}">{{ cat.same_name || cat.same_coat }}</a>.
+                  </div>
+                  {{/if}}
+                  <form class="inline" method="post" action="/admin/cats/{{ cat.id }}">
+                    <button name="action" value="register">Confirm new cat</button>{{#if cat.maybe_same_as}}<input type="hidden" name="into" value="{{ cat.maybe_same_as }}"><button class="button-secondary" name="action" value="merge" data-confirm="Merge this report into {{ cat.same_name || cat.same_coat }}? This can't be undone.">Same cat, merge</button>{{/if}}<button name="action" value="reject" data-confirm="Ignore this report? It won't be counted.">Ignore</button>
+                  </form>
+                </li>
+                {{/each}}
+              </ul>
+              {{/if}}
+              {{#if approvals.length > 0}}
+              <div class="queue-label">
+                <span class="status-dot"></span> Waiting for your OK · {{ approvals.length }}
+              </div>
+              <ul class="review-list">
+                {{#each approvals as approval}}
+                <li id="approval-{{ approval.id }}" class="review-item">
+                  <h3>{{ approval.summary }}</h3><p>From <a href="/admin/chat/{{ approval.room_slug }}">{{ approval.room_name }}</a> · <time datetime="{{ approval.created_at }}">{{ approval.created_at }} UTC</time></p>
+                  <form class="inline" method="post" action="/admin/approvals/{{ approval.id }}">
+                    <button name="approved" value="1">Approve change</button><button name="approved" value="0">Reject</button>
+                  </form>
+                </li>
+                {{/each}}
+              </ul>
+              {{/if}}
+              {{#if pendingCount > flags.length + newCats.length + approvals.length}}<a class="panel-footer-link" href="/admin/cats?show=same">Review possible duplicate cats <span>→</span></a>{{/if}}
+            </section>
+            <div class="dashboard-aside">
+              <section class="panel colony-preview">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">LITTLE PLACES. BIG LOVE.</span><h2>Your colonies</h2>
+                  </div>
+                  <a class="text-link" href="/admin/colonies">View all ↗</a>
+                </div>
+                {{#if colonies.length === 0}}
+                <div class="empty-state compact">
+                  <span class="empty-icon">⌖</span><h3>Every colony starts somewhere.</h3><p>Add a location to bring its cats, feedings, and care together.</p><a class="button button-secondary" href="/admin/colonies#add">＋ Add a colony</a>
+                </div>
+                {{#else}}
+                <div class="colony-preview-list">
+                  {{#each colonies.slice(0, 4) as colony}}<a href="/admin/colonies/{{ colony.id }}"><span class="colony-pin">⌖</span>
+                  <div>
+                    <strong>{{ colony.name }}</strong><small>{{ colony.cats }} cats · {{ colony.fixed }} fixed</small>
+                  </div>
+                  <span class="{{ colony.urgent ? 'state-label danger' : 'colony-arrow' }}">{{ colony.urgent ? colony.urgent + ' urgent' : '↗' }}</span></a>{{/each}}
+                </div>
+                {{/if}}
+              </section>
+              <section class="cathy-card">
+                <span class="cathy-avatar">🐱</span><span class="state-label {{ aiReady ? 'success' : 'pending' }}">{{ aiReady ? 'Ready to help' : 'Setup needed' }}</span><h3>A helping hand, called Cathy.</h3><p>{{ aiReady ? 'Photos, locations, and quick notes become useful colony updates. Your team makes the important decisions.' : 'Cathy can turn volunteer messages into colony updates. Connect your OpenAI API key to enable replies on this computer.' }}</p><a href="#chat-rooms">Meet your volunteer chats <span>→</span></a>
+              </section>
+            </div>
+          </div>
+          <section class="panel chat-panel" id="chat-rooms">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">KEEP THE CONVERSATION GOING</span><h2>Your helping hands <span class="count-pill">{{ rooms.length }}</span></h2><p>A personal chat link for every volunteer. All their updates, together.</p>
+              </div>
+              <a class="text-link" href="#new-chat">＋ New chat</a>
+            </div>
+            {{#if rooms.length === 0}}
+            <div class="chat-empty">
+              <span class="empty-icon">☏</span>
+              <div>
+                <h3>Good care starts with a hello.</h3><p>Create a chat for a volunteer, then share their personal link.</p>
+              </div>
+            </div>
+            {{#else}}
+            <ul class="room-grid">
+              {{#each rooms as room}}
+              <li class="room-card {{ room.unread ? 'unread' : '' }}">
+                <a class="room-main" href="/admin/chat/{{ room.slug }}"><span class="room-avatar">{{ (room.name || room.slug).slice(0,1).toUpperCase() }}</span>
+                <div>
+                  <div class="room-name">
+                    <strong>{{ room.name || room.slug }}</strong>{{#if room.unread}}<span class="unread-dot" aria-label="Unread messages"></span>{{/if}}
+                  </div>
+                  <p>{{ room.sender === 'admin' ? 'You: ' : '' }}{{ room.text || (room.has_photo ? 'Photo shared' : 'Ready for your first hello') }}</p><small><time datetime="{{ room.last_at }}">{{ room.last_at }} UTC</time></small>
+                </div>
+                <span>↗</span></a>
+              </li>
+              {{/each}}
+            </ul>
+            {{/if}}
+            <form class="new-chat-form" id="new-chat" method="post" action="/admin/rooms">
+              <label for="volunteer-name">
+                Make room for a helping hand
+              </label>
+              <div>
+                <input id="volunteer-name" name="name" placeholder="Volunteer’s name, e.g. Maria Gomez" required maxlength="100"><button>Create chat <span>→</span></button>
+              </div>
+              <small>You can copy and share their chat link after creating it.</small>
+            </form>
+          </section>
+          <footer class="workspace-footer">
+            <span>🐾 A little care goes a long way.</span><span>Made for the people who show up.</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+    <script src="/app.js"></script>
+<script>
+    // Defer live refreshes while someone is typing or using a review action.
+    let stale = false;
+    const busy = () => {
+      const live = document.getElementById('live');
+      return live.contains(document.activeElement) ||
+        [...live.querySelectorAll('input:not([type=hidden])')].some(input => input.value);
+    };
+
+    async function refresh() {
+      stale = busy();
+      if (stale) return;
+      try {
+        const response = await fetch('/admin');
+        if (!response.ok) throw new Error('Could not refresh dashboard');
+        const markup = await response.text();
+        const live = new DOMParser().parseFromString(markup, 'text/html').getElementById('live');
+        if (busy()) return (stale = true);
+        document.getElementById('live').replaceWith(live);
+        localTimes(live);
+      } catch {
+        stale = true;
+      }
+    }
+
+    adminEvents.addEventListener('message', refresh);
+    document.addEventListener('focusout', () => stale && setTimeout(refresh, 300));
+  </script>
+</body>
+</html>

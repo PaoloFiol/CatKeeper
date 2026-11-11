@@ -1,0 +1,480 @@
+import { DatabaseSync } from 'node:sqlite';
+import { slugify } from './slugify.js';
+
+// The schema lives in migrations/; run `pnpm migrate` first.
+const DB_PATH = process.env.DB_PATH || 'data/app.db';
+export const db = new DatabaseSync(DB_PATH);
+
+// Creates a named room. Its slug comes from the name, with a number added if it's taken.
+export function createRoom(name) {
+  // Strip accents first, so "María" becomes "maria", not "mara".
+  const base = slugify(name.normalize('NFD').replace(/\p{Diacritic}/gu, '')) || 'room';
+  let slug = base;
+  for (let n = 2; getRoom(slug); n++) slug = `${base}-${n}`;
+
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO rooms (id, name, slug) VALUES (?, ?, ?)').run(id, name, slug);
+  return { id, slug };
+}
+
+export function getRoom(slug) {
+  return db.prepare('SELECT * FROM rooms WHERE slug = ?').get(slug);
+}
+
+// Renaming keeps the slug, so the volunteer's link still works.
+export function renameRoom(id, name) {
+  db.prepare('UPDATE rooms SET name = ? WHERE id = ?').run(name, id);
+}
+
+// Each room with its latest message, most recently active first.
+export function listRooms() {
+  return db
+    .prepare(`
+    SELECT r.id, r.name, r.slug, m.text, m.sender, m.photo_type IS NOT NULL AS has_photo,
+           COALESCE(m.created_at, r.created_at) AS last_at,
+           EXISTS (
+             SELECT 1 FROM messages
+             WHERE room_id = r.id AND sender = 'volunteer' AND id > r.last_read_message_id
+           ) AS unread
+    FROM rooms r
+    LEFT JOIN messages m ON m.id = (
+      SELECT id FROM messages WHERE room_id = r.id ORDER BY id DESC LIMIT 1
+    )
+    ORDER BY last_at DESC
+  `)
+    .all();
+}
+
+export function listMessages(roomId) {
+  return db
+    .prepare(`
+    SELECT id, text, sender, photo_type IS NOT NULL AS has_photo, lat, created_at
+    FROM messages WHERE room_id = ? ORDER BY id
+  `)
+    .all(roomId);
+}
+
+export function addMessage(roomId, sender, text, photo, photoType, lat, lng) {
+  const { lastInsertRowid } = db
+    .prepare(
+      'INSERT INTO messages (room_id, sender, text, photo, photo_type, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(roomId, sender, text, photo ?? null, photoType ?? null, lat ?? null, lng ?? null);
+  return Number(lastInsertRowid);
+}
+
+export function markRead(roomId) {
+  db.prepare(`
+    UPDATE rooms
+    SET last_read_message_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE room_id = ?)
+    WHERE id = ?
+  `).run(roomId, roomId);
+}
+
+export function getPhoto(messageId) {
+  return db
+    .prepare('SELECT photo, photo_type FROM messages WHERE id = ? AND photo IS NOT NULL')
+    .get(messageId);
+}
+
+// The most recent photo sent in this room before the given message, if any, within the
+// last half hour - so a cat's photo isn't lost if the colony/details come in a reply after it,
+// but an old photo from an unrelated earlier visit doesn't get attached by mistake.
+export function recentPhotoMessage(roomId, beforeMessageId) {
+  return db
+    .prepare(`
+    SELECT id, created_at FROM messages
+    WHERE room_id = ? AND id < ? AND photo_type IS NOT NULL
+      AND created_at >= datetime('now', '-30 minutes')
+    ORDER BY id DESC LIMIT 1
+  `)
+    .get(roomId, beforeMessageId);
+}
+
+// Each colony with its current state.
+export function listColonies() {
+  return db
+    .prepare(`
+    SELECT c.id, c.name, c.description, c.address, c.lat, c.lng,
+           (SELECT COUNT(*) FROM cats WHERE colony_id = c.id AND status = 'active') AS cats,
+           (SELECT COUNT(*) FROM cats WHERE colony_id = c.id AND status = 'active' AND fixed) AS fixed,
+           (SELECT COUNT(*) FROM cats WHERE colony_id = c.id AND status = 'pending') AS new_cats,
+           (SELECT COUNT(*) FROM flags WHERE colony_id = c.id AND resolved_at IS NULL) AS urgent,
+           (SELECT MAX(created_at) FROM feedings WHERE colony_id = c.id) AS last_fed_at
+    FROM colonies c ORDER BY c.name
+  `)
+    .all();
+}
+
+export function getColony(id) {
+  return listColonies().find((colony) => colony.id === Number(id));
+}
+
+// A colony's confirmed and newly reported cats, with their open flags.
+export function listColonyCats(colonyId) {
+  return db
+    .prepare(`
+    SELECT c.*,
+           (SELECT id FROM cat_photos WHERE cat_id = c.id ORDER BY id DESC LIMIT 1) AS cat_photo_id,
+           (SELECT COUNT(*) FROM sightings WHERE cat_id = c.id) AS sightings,
+           (SELECT MAX(created_at) FROM sightings WHERE cat_id = c.id) AS last_seen_at,
+           (SELECT group_concat(REPLACE(kind, '_', ' '), ', ') FROM flags WHERE cat_id = c.id AND resolved_at IS NULL) AS open_flags
+    FROM cats c WHERE c.colony_id = ? AND c.status IN ('pending', 'active')
+    ORDER BY c.status = 'pending' DESC, c.id
+  `)
+    .all(colonyId);
+}
+
+// Newly reported cats waiting for the rescue to confirm them, across all colonies.
+export function listPendingCats() {
+  return db
+    .prepare(`
+    SELECT c.*, col.name AS colony_name, same.name AS same_name, same.coat AS same_coat,
+           same.photo_message_id AS same_photo_message_id,
+           (SELECT COUNT(*) FROM sightings WHERE cat_id = c.id) AS sightings,
+           (SELECT group_concat(REPLACE(kind, '_', ' '), ', ') FROM flags WHERE cat_id = c.id AND resolved_at IS NULL) AS open_flags
+    FROM cats c
+    JOIN colonies col ON col.id = c.colony_id
+    LEFT JOIN cats same ON same.id = c.maybe_same_as
+    WHERE c.status = 'pending' ORDER BY c.id
+  `)
+    .all();
+}
+
+// The colony's recent feedings, newest first, with who fed.
+export function listFeedings(colonyId) {
+  return db
+    .prepare(`
+    SELECT f.created_at, r.slug AS room_slug, r.name FROM feedings f LEFT JOIN rooms r ON r.id = f.room_id
+    WHERE f.colony_id = ? ORDER BY f.id DESC LIMIT 10
+  `)
+    .all(colonyId);
+}
+
+// roomId/messageId are set when a volunteer reports feeding the colony; null when the rescue did it.
+export function logFeeding(colonyId, roomId = null, messageId = null) {
+  db.prepare('INSERT INTO feedings (colony_id, room_id, message_id) VALUES (?, ?, ?)').run(
+    colonyId,
+    roomId,
+    messageId,
+  );
+}
+
+// Unresolved urgent cases, newest first: one colony's, or every colony's if none is given.
+export function listOpenFlags(colonyId = null) {
+  return db
+    .prepare(`
+    SELECT f.id, REPLACE(f.kind, '_', ' ') AS kind, f.note, f.created_at, f.colony_id, f.cat_id,
+           col.name AS colony_name, c.name AS cat_name, c.coat AS cat_coat
+    FROM flags f JOIN colonies col ON col.id = f.colony_id LEFT JOIN cats c ON c.id = f.cat_id
+    WHERE (?1 IS NULL OR f.colony_id = ?1) AND f.resolved_at IS NULL ORDER BY f.id DESC
+  `)
+    .all(colonyId);
+}
+
+// A single cat's unresolved urgent cases, newest first, so each can be reviewed and
+// resolved on its own instead of one "Handled" lumping every open flag together.
+export function listCatFlags(catId) {
+  return db
+    .prepare(`
+    SELECT id, REPLACE(kind, '_', ' ') AS kind, note, created_at
+    FROM flags WHERE cat_id = ? AND resolved_at IS NULL ORDER BY id DESC
+  `)
+    .all(catId);
+}
+
+// The colony's handled urgent cases, newest first, with what the rescue wrote.
+export function listHandledFlags(colonyId) {
+  return db
+    .prepare(`
+    SELECT REPLACE(f.kind, '_', ' ') AS kind, f.note, f.resolution, f.resolved_at, f.cat_id,
+           c.name AS cat_name, c.coat AS cat_coat
+    FROM flags f LEFT JOIN cats c ON c.id = f.cat_id
+    WHERE f.colony_id = ? AND f.resolved_at IS NOT NULL ORDER BY f.resolved_at DESC LIMIT 20
+  `)
+    .all(colonyId);
+}
+
+export const FLAG_KINDS = ['pregnant', 'injured', 'sick', 'kittens', 'no_feeder'];
+
+export function getFlag(id) {
+  return db.prepare('SELECT * FROM flags WHERE id = ?').get(id);
+}
+
+export function resolveFlag(id, note) {
+  db.prepare(
+    'UPDATE flags SET resolved_at = CURRENT_TIMESTAMP, resolution = ? WHERE id = ? AND resolved_at IS NULL',
+  ).run(note, id);
+}
+
+// cat_id is null for a case about the colony as a whole, e.g. a lost feeder.
+export function createFlag(colonyId, catId, kind, note) {
+  db.prepare('INSERT INTO flags (colony_id, cat_id, kind, note) VALUES (?, ?, ?, ?)').run(
+    colonyId,
+    catId,
+    kind,
+    note,
+  );
+}
+
+// Every cat except ignored reports, with its colony and any cat it might be.
+// Urgent cats first, then likely duplicates, then new ones, then newest.
+export function listAllCats() {
+  return db
+    .prepare(`
+    SELECT c.*, col.name AS colony_name, same.id AS same_id, same.name AS same_name, same.coat AS same_coat,
+           same.photo_message_id AS same_photo_message_id,
+           (SELECT id FROM cat_photos WHERE cat_id = c.id ORDER BY id DESC LIMIT 1) AS cat_photo_id,
+           (SELECT COUNT(*) FROM sightings WHERE cat_id = c.id) AS sightings,
+           (SELECT MAX(created_at) FROM sightings WHERE cat_id = c.id) AS last_seen_at,
+           (SELECT group_concat(REPLACE(kind, '_', ' '), ', ') FROM flags WHERE cat_id = c.id AND resolved_at IS NULL) AS open_flags
+    FROM cats c JOIN colonies col ON col.id = c.colony_id
+    LEFT JOIN cats same ON same.id = c.maybe_same_as AND same.id != c.id AND same.status != 'rejected'
+    WHERE c.status != 'rejected'
+    ORDER BY open_flags IS NULL, same.id IS NULL, c.status = 'pending' DESC, c.id DESC
+  `)
+    .all();
+}
+
+// Registers a cat the rescue already knows is real (status defaults to 'active'), or one an
+// agent is still reporting (status 'pending', with photoMessageId/maybeSameAs from the sighting).
+export function createCat(
+  colonyId,
+  {
+    name = null,
+    coat,
+    markings = null,
+    fixed = false,
+    photoMessageId = null,
+    maybeSameAs = null,
+    status = 'active',
+  },
+) {
+  const { lastInsertRowid } = db
+    .prepare(`
+      INSERT INTO cats (colony_id, name, coat, markings, fixed, photo_message_id, maybe_same_as, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run(colonyId, name, coat, markings, fixed ? 1 : 0, photoMessageId, maybeSameAs, status);
+  const catId = Number(lastInsertRowid);
+  // A pending cat gets its first "Reported" entry from the sighting the caller logs; an active
+  // one, added directly by the rescue, has no sighting, so it needs its own history entry.
+  if (status === 'active') logCatEvent(catId, 'Added by rescue');
+  return catId;
+}
+
+export function getCat(id) {
+  return db
+    .prepare(`
+    SELECT c.*, col.name AS colony_name,
+           (SELECT group_concat(REPLACE(kind, '_', ' '), ', ') FROM flags WHERE cat_id = c.id AND resolved_at IS NULL) AS open_flags
+    FROM cats c JOIN colonies col ON col.id = c.colony_id WHERE c.id = ?
+  `)
+    .get(id);
+}
+
+// Everything that happened to the cat, newest first: reports (with photo and reporter),
+// urgent cases and how they were handled, and what the rescue did.
+export function listCatHistory(catId) {
+  return db
+    .prepare(`
+    SELECT m.created_at AS at, 'Reported' AS what, s.note, s.message_id,
+           m.photo_type IS NOT NULL AS has_photo, r.name AS room_name, r.slug AS room_slug
+    FROM sightings s JOIN messages m ON m.id = s.message_id JOIN rooms r ON r.id = m.room_id
+    WHERE s.cat_id = ?1
+    UNION ALL
+    SELECT created_at, 'Urgent: ' || REPLACE(kind, '_', ' '), note, NULL, 0, NULL, NULL FROM flags WHERE cat_id = ?1
+    UNION ALL
+    SELECT resolved_at, 'Handled: ' || REPLACE(kind, '_', ' '), resolution, NULL, 0, NULL, NULL
+    FROM flags WHERE cat_id = ?1 AND resolved_at IS NOT NULL
+    UNION ALL
+    SELECT created_at, what, note, NULL, 0, NULL, NULL FROM cat_events WHERE cat_id = ?1
+    ORDER BY at DESC
+  `)
+    .all(catId);
+}
+
+export function logCatEvent(catId, what, note = null) {
+  db.prepare('INSERT INTO cat_events (cat_id, what, note) VALUES (?, ?, ?)').run(catId, what, note);
+}
+
+// A photo the rescue attached directly to a cat, outside the chat/sighting pipeline.
+export function addCatPhoto(catId, photo, photoType) {
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO cat_photos (cat_id, photo, photo_type) VALUES (?, ?, ?)')
+    .run(catId, photo, photoType);
+  logCatEvent(catId, 'Photo added');
+  return Number(lastInsertRowid);
+}
+
+export function listCatPhotos(catId) {
+  return db
+    .prepare('SELECT id, created_at FROM cat_photos WHERE cat_id = ? ORDER BY id DESC')
+    .all(catId);
+}
+
+export function getCatPhoto(id) {
+  return db.prepare('SELECT photo, photo_type FROM cat_photos WHERE id = ?').get(id);
+}
+
+// Totals across all colonies, for the team and for sponsors.
+export function catTotals() {
+  return db
+    .prepare(`
+    SELECT SUM(status = 'active') AS cats,
+           SUM(status = 'active' AND fixed) AS fixed,
+           SUM(status = 'active' AND NOT fixed) AS need_tnr,
+           SUM(fixed_at IS NOT NULL) AS fixed_by_us,
+           SUM(fixed_at >= strftime('%Y-01-01', 'now')) AS fixed_this_year,
+           SUM(status = 'adopted') AS adopted
+    FROM cats
+  `)
+    .get();
+}
+
+// The rescue fixed this cat (TNR done).
+export function markFixed(catId) {
+  const { changes } = db
+    .prepare('UPDATE cats SET fixed = 1, fixed_at = CURRENT_TIMESTAMP WHERE id = ? AND NOT fixed')
+    .run(catId);
+  if (changes) logCatEvent(catId, 'Fixed (TNR done)');
+}
+
+// Undoes a mistaken "fixed" mark.
+export function unmarkFixed(catId) {
+  const { changes } = db
+    .prepare('UPDATE cats SET fixed = 0, fixed_at = NULL WHERE id = ? AND fixed')
+    .run(catId);
+  if (changes) logCatEvent(catId, 'Un-fixed (mistake undone)');
+}
+
+// Moves a cat registered to the wrong colony, along with its flags.
+export function moveCat(catId, colonyId) {
+  db.prepare('UPDATE cats SET colony_id = ? WHERE id = ?').run(colonyId, catId);
+  db.prepare('UPDATE flags SET colony_id = ? WHERE cat_id = ?').run(colonyId, catId);
+  const { name } = db.prepare('SELECT name FROM colonies WHERE id = ?').get(colonyId);
+  logCatEvent(catId, `Moved to ${name}`);
+}
+
+// The rescue says the two records are different cats.
+export function clearSameCat(catId) {
+  db.prepare('UPDATE cats SET maybe_same_as = NULL WHERE id = ?').run(catId);
+}
+
+export const CAT_STATUSES = ['pending', 'active', 'adopted', 'missing', 'deceased', 'rejected'];
+
+// Edits a cat's own details (not its status, colony or fixed state - those have their own actions).
+export function updateCat(catId, { name, coat, markings }) {
+  db.prepare('UPDATE cats SET name = ?, coat = ?, markings = ? WHERE id = ?').run(
+    name,
+    coat,
+    markings,
+    catId,
+  );
+  logCatEvent(catId, 'Edited details');
+}
+
+const STATUS_EVENTS = { active: 'Added to colony', rejected: 'Ignored' };
+
+export function setCatStatus(catId, status) {
+  db.prepare('UPDATE cats SET status = ? WHERE id = ?').run(status, catId);
+  logCatEvent(catId, STATUS_EVENTS[status] ?? `Marked ${status}`);
+}
+
+// Folds a duplicate record into the cat it really is.
+export function mergeCats(keepId, duplicateId) {
+  // A mistyped number would otherwise delete the duplicate and orphan its history.
+  if (!db.prepare('SELECT 1 FROM cats WHERE id = ?').get(keepId)) return;
+  for (const table of ['sightings', 'flags', 'cat_events']) {
+    db.prepare(`UPDATE ${table} SET cat_id = ? WHERE cat_id = ?`).run(keepId, duplicateId);
+  }
+  db.prepare(`
+    UPDATE cats SET photo_message_id = COALESCE(photo_message_id,
+      (SELECT photo_message_id FROM cats WHERE id = ?))
+    WHERE id = ?
+  `).run(duplicateId, keepId);
+  db.prepare('UPDATE cats SET maybe_same_as = NULL WHERE maybe_same_as = ?').run(duplicateId);
+  db.prepare('DELETE FROM cats WHERE id = ?').run(duplicateId);
+  logCatEvent(keepId, `Merged duplicate record #${duplicateId}`);
+}
+
+export function createColony(name, description, address, lat, lng) {
+  db.prepare(
+    'INSERT INTO colonies (name, description, address, lat, lng) VALUES (?, ?, ?, ?, ?)',
+  ).run(name, description, address, lat, lng);
+}
+
+// A colony's cats that are no longer current (adopted, missing or deceased), newest first -
+// kept visible as history, not just reachable by direct link. Excludes rejected reports, which
+// were never a confirmed cat.
+export function listPastCats(colonyId) {
+  return db
+    .prepare(`
+    SELECT c.*,
+           (SELECT COUNT(*) FROM sightings WHERE cat_id = c.id) AS sightings,
+           (SELECT MAX(created_at) FROM sightings WHERE cat_id = c.id) AS last_seen_at
+    FROM cats c WHERE c.colony_id = ? AND c.status IN ('adopted', 'missing', 'deceased')
+    ORDER BY c.id DESC
+  `)
+    .all(colonyId);
+}
+
+export function listPendingApprovals() {
+  return db
+    .prepare(`
+      SELECT a.id, r.slug AS room_slug, r.name AS room_name, a.summary, a.created_at
+      FROM approvals a JOIN rooms r ON r.id = a.room_id WHERE a.decided_at IS NULL
+    `)
+    .all();
+}
+
+// Pending work, not unread messages: opening the bell never clears an action.
+// The review query loads fresh records even when linking back to the current page.
+export function listAdminNotifications() {
+  const flagNames = {
+    pregnant: 'Pregnant cat',
+    injured: 'Injured cat',
+    sick: 'Sick cat',
+    kittens: 'New kittens',
+    no_feeder: 'Colony without a feeder',
+  };
+  const urgent = listOpenFlags().map((flag) => ({
+    id: `flag-${flag.id}`,
+    href: `/admin?review=flag-${flag.id}#flag-${flag.id}`,
+    kind: 'Urgent',
+    urgent: true,
+    title: flagNames[flag.kind] || flag.kind,
+    detail: [flag.cat_name || flag.cat_coat, flag.colony_name, flag.note]
+      .filter(Boolean)
+      .join(' · '),
+    created_at: flag.created_at,
+  }));
+  const approvals = listPendingApprovals().map((approval) => ({
+    id: `approval-${approval.id}`,
+    href: `/admin?review=approval-${approval.id}#approval-${approval.id}`,
+    kind: 'Approval needed',
+    title: approval.summary,
+    detail: `Reported by ${approval.room_name || 'a volunteer'}`,
+    created_at: approval.created_at,
+  }));
+  // A new cat with a possible match is one review, not two notifications.
+  const cats = listAllCats()
+    .filter((cat) => cat.status === 'pending' || cat.same_id)
+    .map((cat) => ({
+      id: `cat-${cat.id}`,
+      href: cat.same_id
+        ? `/admin/cats?show=same&review=cat-${cat.id}#cat-${cat.id}`
+        : `/admin/cats/${cat.id}`,
+      kind: cat.same_id ? 'Possible duplicate' : 'New cat to confirm',
+      title: cat.name || cat.coat || `Cat #${cat.id}`,
+      detail: cat.same_id
+        ? `${cat.colony_name} · Compare with ${cat.same_name || cat.same_coat || `cat #${cat.same_id}`}`
+        : cat.colony_name,
+      created_at: cat.created_at,
+    }));
+  return [...urgent, ...approvals, ...cats].sort(
+    (a, b) =>
+      Number(Boolean(b.urgent)) - Number(Boolean(a.urgent)) ||
+      b.created_at.localeCompare(a.created_at),
+  );
+}

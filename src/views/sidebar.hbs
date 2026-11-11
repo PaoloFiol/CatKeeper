@@ -1,0 +1,26 @@
+{{#expect section}}
+<aside class="sidebar" id="workspace-navigation">
+  <button type="button" class="sidebar-close" aria-label="Close navigation">×</button>
+  <a class="brand" href="/admin"><span class="brand-mark">🐱</span><span>Cat Keeper<span class="brand-period">.</span><small>A little care, together.</small></span></a>
+  <div class="workspace-card">
+    <span class="workspace-avatar">M</span>
+    <div>
+      <strong>Mangrove Mews</strong><small>Rescue workspace</small>
+    </div>
+    <span class="workspace-dot" title="Local workspace"></span>
+  </div>
+  <span class="nav-caption">YOUR WORKSPACE</span>
+  <nav class="side-nav" aria-label="Admin">
+    <a href="/admin" {{ section === 'today' ? 'aria-current=page' : '' }}><span class="nav-icon">⌂</span><span>Today</span><span class="nav-arrow">›</span></a>
+    <a href="/admin/colonies" {{ section === 'colonies' ? 'aria-current=page' : '' }}><span class="nav-icon">⌖</span><span>Colonies</span><span class="nav-arrow">›</span></a>
+    <a href="/admin/cats" {{ section === 'cats' ? 'aria-current=page' : '' }}><span class="nav-icon">🐾</span><span>Cats</span><span class="nav-arrow">›</span></a>
+    <a href="/admin#chat-rooms" {{ section === 'chat' ? 'aria-current=page' : '' }}><span class="nav-icon">☏</span><span>Volunteer chats</span><span class="nav-arrow">›</span></a>
+  </nav>
+  <div class="sidebar-note">
+    <span>♡</span><strong>Small moments.<br>Happier colonies.</strong><p>For the people who show up,<br>rain or shine.</p>
+    <div class="sidebar-paws" aria-hidden="true">
+      · &nbsp; 🐾 &nbsp; ·
+    </div>
+  </div>
+  <a class="sidebar-footer" href="/"><span class="rescue-avatar">MM</span><span><strong>Your rescue team</strong><small>Made for caring together</small></span><span>↗</span></a>
+</aside>
